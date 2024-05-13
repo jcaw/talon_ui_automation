@@ -161,6 +161,7 @@ class Actions:
     def automator_check_for_talon_updates():
         """Check for Talon updates."""
 
+    # TODO: Use same action on Mac? Does it have the same concept of a tray?
     def automator_click_tray_icon(icon_name_regexp: str, button: int = 0):
         """Click a tray icon on Windows."""
 
