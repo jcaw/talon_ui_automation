@@ -35,11 +35,18 @@ def system_tray_button_spec(name_regexp: str) -> Spec:
 
 
 class SearchSpecs:
-    taskbar = [
+    """Useful predefined search paths."""
+
+    WINDOWS_TASKBAR = [
         Spec(name="Taskbar", class_name="Shell_TrayWnd"),
     ]
-    hidden_items_tray_button = [*taskbar, system_tray_button_spec("Show Hidden Icons")]
-    overflow_tray = [Spec(class_name="TopLevelWindowForOverflowXamlIsland")]
+    WINDOWS_HIDDEN_ITEMS_TRAY_BUTTON = [
+        *WINDOWS_TASKBAR,
+        system_tray_button_spec("Show Hidden Icons"),
+    ]
+    WINDOWS_TRAY_ICONS_OVERFLOW = [
+        Spec(class_name="TopLevelWindowForOverflowXamlIsland")
+    ]
 
 
 def automator_find_elements(*search_specs: Spec) -> Iterator[ui.Element]:
@@ -114,7 +121,7 @@ def automator_get_tray_icon(icon_name_regexp: str) -> ui.Element:
     button_spec = system_tray_button_spec(icon_name_regexp)
 
     # Try to find the icon in the main window first.
-    main_tray_button_specs = [*SearchSpecs.taskbar, button_spec]
+    main_tray_button_specs = [*SearchSpecs.WINDOWS_TASKBAR, button_spec]
     try:
         return automator_find_first_element(*main_tray_button_specs)
     except ElementNotFoundError:
@@ -124,13 +131,13 @@ def automator_get_tray_icon(icon_name_regexp: str) -> ui.Element:
     #
     # First open the overflow window.
     hidden_items_button = automator_find_first_element(
-        *SearchSpecs.hidden_items_tray_button
+        *SearchSpecs.WINDOWS_HIDDEN_ITEMS_TRAY_BUTTON
     )
     click_element(hidden_items_button)
     sleep("100ms")
 
     # Once the overflow window is open,
-    overflow_tray_button_spec = [*SearchSpecs.overflow_tray, button_spec]
+    overflow_tray_button_spec = [*SearchSpecs.WINDOWS_TRAY_ICONS_OVERFLOW, button_spec]
     try:
         return automator_find_first_element(*overflow_tray_button_spec)
     except ElementNotFoundError:
@@ -170,7 +177,7 @@ def automator_get_tray_icon_windows(icon_name_regexp: str) -> ui.Element:
     button_spec = system_tray_button_spec(icon_name_regexp)
 
     # Try to find the icon in the main window first.
-    main_tray_button_specs = [*SearchSpecs.taskbar, button_spec]
+    main_tray_button_specs = [*SearchSpecs.WINDOWS_TASKBAR, button_spec]
     try:
         return automator_find_first_element(*main_tray_button_specs)
     except ElementNotFoundError:
@@ -180,13 +187,13 @@ def automator_get_tray_icon_windows(icon_name_regexp: str) -> ui.Element:
     #
     # First open the overflow window.
     hidden_items_button = automator_find_first_element(
-        *SearchSpecs.hidden_items_tray_button
+        *SearchSpecs.WINDOWS_HIDDEN_ITEMS_TRAY_BUTTON
     )
     click_element(hidden_items_button)
     sleep("100ms")
 
     # Once the overflow window is open,
-    overflow_tray_button_spec = [*SearchSpecs.overflow_tray, button_spec]
+    overflow_tray_button_spec = [*SearchSpecs.WINDOWS_TRAY_ICONS_OVERFLOW, button_spec]
     try:
         return automator_find_first_element(*overflow_tray_button_spec)
     except ElementNotFoundError:
