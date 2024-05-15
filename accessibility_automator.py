@@ -165,12 +165,32 @@ class Actions:
     def automator_click_tray_icon(icon_name_regexp: str, button: int = 0):
         """Click a tray icon on Windows."""
 
+    def automator_close_start_menu():
+        """Close the start menu in Windows, iff it's open. Does nothing on other platforms."""
+        if app.platform == "windows":
+            with AutomationOverlay():
+                for window in ui.windows():
+                    if (
+                        not (window.hidden or window.minimized)
+                        and window.title == "Start"
+                        and window.app.name == "Windows Start Experience Host"
+                    ):
+                        print(
+                            "[accessibility_automator]: Start menu detected as open. Closing it."
+                        )
+                        key("win")
+                        sleep("500ms")
+                        return
+
 
 def exact_match_re(string: str) -> str:
     return f"^{re.escape(string)}$"
 
 
 def automator_get_tray_icon_windows(icon_name_regexp: str) -> ui.Element:
+    # Reset so we have a predictable starting state
+    actions.self.automator_close_start_menu()
+
     # Open the start menu to ensure the tray is showing on Windows 11
     key("win")
     sleep("300ms")
