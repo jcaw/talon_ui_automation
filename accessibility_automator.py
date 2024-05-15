@@ -1,7 +1,8 @@
 from typing import Union, List, Optional, Iterator
 import re
 from queue import LifoQueue
-from talon import Module, Context, actions, ui, cron
+from talon import Module, Context, actions, ui, cron, app, canvas
+from talon.ui import Rect, Point2d
 
 key = actions.key
 sleep = actions.sleep
@@ -47,6 +48,76 @@ class SearchSpecs:
     WINDOWS_TRAY_ICONS_OVERFLOW = [
         Spec(class_name="TopLevelWindowForOverflowXamlIsland")
     ]
+
+
+def draw(c: canvas.Canvas):
+    TRANSPARENCY = "55"
+
+    paint = c.paint
+    paint.blendmode = paint.Blend.SRC
+    paint.color = "#000000" + TRANSPARENCY
+    paint.style = paint.Style.FILL
+    c.draw_rect(c.rect)
+
+    paint.textsize = round(min(c.rect.width, c.rect.height) / 8)
+    print(dir(paint))
+    paint.color = "#FFFFFF" + TRANSPARENCY
+    text = "(Automating UI)"
+    text_dims = paint.measure_text(text)[1]
+    c.draw_text(
+        text,
+        c.rect.center.x - text_dims.width / 2,
+        # HACK: Compensate for the fact the text's y is measured from
+        #  the line base, not the tails of the text.
+        c.rect.center.y + text_dims.height / 3,
+    )
+
+
+canvases = []
+
+
+def create_canvases():
+    if not canvases:
+        print("Creating canvases")
+        for screen in ui.screens():
+            c = canvas.Canvas.from_screen(screen)
+            # HOTFIX: from_screen not working right on Windows
+            if app.platform == "windows":
+                hotfix_rect = Rect(*screen.rect)
+                hotfix_rect.height -= 1
+                c.rect = hotfix_rect
+            c.focusable = False
+            c.register("draw", draw)
+            c.freeze()
+            canvases.append(c)
+
+
+def destroy_canvases():
+    for c in canvases:
+        c.unregister("draw", draw)
+        c.close()
+    canvases.clear()
+
+
+canvas_context_count = 0
+
+
+class AutomationOverlay:
+    def __enter__(self):
+        global canvas_context_count
+        # Count multiple entries into this context so the canvases are only
+        # destroyed when exiting the outermost context.
+        if canvas_context_count == 0:
+            create_canvases()
+        canvas_context_count += 1
+        return self
+
+    def __exit__(self, *_, **__):
+        global canvas_context_count
+        canvas_context_count -= 1
+        if canvas_context_count == 0:
+            destroy_canvases()
+        return False
 
 
 def automator_find_elements(*search_specs: Spec) -> Iterator[ui.Element]:
@@ -253,19 +324,25 @@ def click_talon_menu_item_windows(*exact_menu_sequence: str):
 @windows_context.action_class("self")
 class WindowsActions:
     def automator_open_talon_repl():
-        # TODO: Switch to it if it's already open?
-        click_talon_menu_item_windows("Scripting", "Console (REPL)")
-        # Opening behaviour is a bit weird - unlike when the log is opened, it
-        # doesn't close the start menu.
-        sleep("2000ms")
-        key("win")
+        with AutomationOverlay():
+            # TODO: Switch to it if it's already open?
+            click_talon_menu_item_windows("Scripting", "Console (REPL)")
+            # Opening behaviour is a bit weird - unlike when the log is opened, it
+            # doesn't close the start menu.
+            sleep("2000ms")
+            key("win")
 
     def automator_open_talon_log():
-        # TODO: Switch to it if it's already open?
-        click_talon_menu_item_windows("Scripting", "View Log")
+        with AutomationOverlay():
+            # TODO: Switch to it if it's already open?
+            click_talon_menu_item_windows("Scripting", "View Log")
 
     def automator_check_for_talon_updates():
-        click_talon_menu_item_windows("Check for Updates...")
+        with AutomationOverlay():
+            click_talon_menu_item_windows("Check for Updates...")
 
     def automator_click_tray_icon(icon_name_regexp: str, button: int = 0):
-        click_element(automator_get_tray_icon_windows(icon_name_regexp), button=button)
+        with AutomationOverlay():
+            click_element(
+                automator_get_tray_icon_windows(icon_name_regexp), button=button
+            )
