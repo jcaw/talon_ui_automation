@@ -60,7 +60,6 @@ def draw(c: canvas.Canvas):
     c.draw_rect(c.rect)
 
     paint.textsize = round(min(c.rect.width, c.rect.height) / 8)
-    print(dir(paint))
     paint.color = "#FFFFFF" + TRANSPARENCY
     text = "(Automating UI)"
     text_dims = paint.measure_text(text)[1]
