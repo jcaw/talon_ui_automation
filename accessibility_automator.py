@@ -51,7 +51,7 @@ class SearchSpecs:
 
 
 def draw(c: canvas.Canvas):
-    TRANSPARENCY = "55"
+    TRANSPARENCY = "77"
 
     paint = c.paint
     paint.blendmode = paint.Blend.SRC
