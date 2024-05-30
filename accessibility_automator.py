@@ -27,6 +27,16 @@ class Spec:
         self.search_indirect = search_indirect
 
 
+@module.action
+def automator_spec(
+    name: Optional[str] = None,
+    class_name: Optional[str] = None,
+    search_indirect: Optional[bool] = False,
+) -> Spec:
+    """Create and return an automation element `Spec` object."""
+    return Spec(name=name, class_name=class_name, search_indirect=search_indirect)
+
+
 def system_tray_button_spec(name_regexp: str) -> Spec:
     return Spec(
         name=name_regexp,
@@ -48,6 +58,12 @@ class SearchSpecs:
     WINDOWS_TRAY_ICONS_OVERFLOW = [
         Spec(class_name="TopLevelWindowForOverflowXamlIsland")
     ]
+
+
+@module.action
+def automator_predefined_specs() -> SearchSpecs:
+    """Get the predefined search specs object."""
+    return SearchSpecs
 
 
 def draw(c: canvas.Canvas):
@@ -101,6 +117,7 @@ def destroy_canvases():
 canvas_context_count = 0
 
 
+# TODO: Convert this to an action to remove need to import?
 class AutomationOverlay:
     def __enter__(self):
         global canvas_context_count
@@ -119,30 +136,18 @@ class AutomationOverlay:
         return False
 
 
-def automator_find_elements(*search_specs: Spec) -> Iterator[ui.Element]:
-    """Iterator to yeild all elements matching a particular search spec."""
-    # TODO: Edge case for if the first spec matches the root node?
+@module.action
+def automator_overlay() -> AutomationOverlay:
+    """Get a context manager that creates an automation overlay."""
+    return AutomationOverlay()
 
-    windows = []
-    browser_windows = []
-    for window in ui.windows():
-        if window.hidden or window.minimized:
-            continue
-        try:
-            element = window.element
-        except OSError:
-            continue
-        for browser in {"firefox", "chrome", "edge", "safari", "brave"}:
-            if browser in element.name.lower():
-                browser_windows.append(element)
-                continue
-        windows.append(element)
-    # Browsers can take a long time to scrape, so put them at the end.
-    windows.extend(browser_windows)
 
+def automator_find_elements_from_roots(
+    root_elements: List[ui.Element], *search_specs: Spec
+):
     queue = LifoQueue()
-    for window in reversed(windows):
-        queue.put((window, search_specs))
+    for element in reversed(root_elements):
+        queue.put((element, search_specs))
 
     while not queue.empty():
         element, remaining_specs = queue.get()
@@ -166,19 +171,65 @@ def automator_find_elements(*search_specs: Spec) -> Iterator[ui.Element]:
                 queue.put((child, remaining_specs))
 
 
+def automator_find_elements(*search_specs: Spec) -> Iterator[ui.Element]:
+    """Iterator to yeild all elements matching a particular search spec."""
+    # TODO: Edge case for if the first spec matches the root node?
+
+    windows = []
+    browser_windows = []
+    for window in ui.windows():
+        if window.hidden or window.minimized:
+            continue
+        try:
+            element = window.element
+        except OSError:
+            continue
+        for browser in {"firefox", "chrome", "edge", "safari", "brave"}:
+            if browser in element.name.lower():
+                browser_windows.append(element)
+                continue
+        windows.append(element)
+    # Browsers can take a long time to scrape, so put them at the end.
+    windows.extend(browser_windows)
+    return automator_find_elements_from_roots(reversed(windows), *search_specs)
+
+
+def automator_find_elements_current_window(*search_specs: Spec) -> Iterator[ui.Element]:
+    return automator_find_elements_from_roots(
+        [ui.current_window().element], *search_specs
+    )
+
+
 class ElementNotFoundError(RuntimeError):
     pass
 
 
-def automator_find_first_element(*search_specs: Spec) -> ui.Element:
-    """Find the first element that matches `search_specs`."""
+def _automator_find_first_element_internal(
+    elements_iterator, search_specs
+) -> ui.Element:
+    """Common functionality. See references."""
     try:
-        return next(iter(automator_find_elements(*search_specs)))
+        return next(iter(elements_iterator))
     except StopIteration:
         raise ElementNotFoundError()
 
 
+def automator_find_first_element(*search_specs: Spec) -> ui.Element:
+    """Find the first element that matches `search_specs`."""
+    return _automator_find_first_element_internal(
+        automator_find_elements(*search_specs)
+    )
+
+
+def automator_find_first_element_current_window(*search_specs: Spec) -> ui.Element:
+    """Find the first element that matches `search_specs` in the current window."""
+    return _automator_find_first_element_internal(
+        automator_find_elements_current_window(*search_specs)
+    )
+
+
 def click_element(element: ui.Element, button: int = 0):
+    # TODO: Return mouse to original position?
     actions.mouse_move(*element.clickable_point)
     actions.mouse_click(button=button)
 
@@ -222,6 +273,21 @@ def automator_get_tray_icon(icon_name_regexp: str) -> ui.Element:
 
 @module.action_class
 class Actions:
+    def automator_click_element(search_specs: List[Spec], button: int = 0):
+        """Find and click a specific element."""
+        with AutomationOverlay():
+            click_element(automator_find_first_element(*search_specs), button=button)
+
+    def automator_click_element_current_window(
+        search_specs: List[Spec], button: int = 0
+    ):
+        """Find and click a specific element in the current window."""
+        with AutomationOverlay():
+            # TODO: UI automation, click element in the current window.
+            click_element(
+                automator_find_first_element_current_window(search_specs), button=button
+            )
+
     def automator_open_talon_repl():
         """Open the Talon repl from the menu (or switch to it if it's already open)."""
 
