@@ -205,7 +205,7 @@ class ElementNotFoundError(RuntimeError):
 
 
 def _automator_find_first_element_internal(
-    elements_iterator, search_specs
+    elements_iterator: Iterator[Spec],
 ) -> ui.Element:
     """Common functionality. See references."""
     try:
