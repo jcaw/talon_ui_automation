@@ -297,6 +297,9 @@ class Actions:
     def automator_check_for_talon_updates():
         """Check for Talon updates."""
 
+    def automator_open_tray_overflow():
+        """Open the taskbar tray icon overflow window, on Windows."""
+
     # TODO: Use same action on Mac? Does it have the same concept of a tray?
     def automator_click_tray_icon(icon_name_regexp: str, button: int = 0):
         """Click a tray icon on Windows."""
@@ -405,6 +408,21 @@ class WindowsActions:
     def automator_check_for_talon_updates():
         with AutomationOverlay():
             click_talon_menu_item_windows("Check for Updates...")
+
+    def automator_open_tray_overflow():
+        with AutomationOverlay():
+            # Open the start menu to ensure the tray is showing on Windows 11#
+            #
+            # TODO: Action to open windows menu IFF it's not already open.
+            key("win")
+            sleep("300ms")
+
+            # Open the overflow window.
+            hidden_items_button = automator_find_first_element(
+                *SearchSpecs.WINDOWS_HIDDEN_ITEMS_TRAY_BUTTON
+            )
+            click_element(hidden_items_button)
+            sleep("100ms")
 
     def automator_click_tray_icon(icon_name_regexp: str, button: int = 0):
         with AutomationOverlay():
