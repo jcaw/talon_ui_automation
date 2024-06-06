@@ -146,7 +146,7 @@ def automator_find_elements_from_roots(
     root_elements: List[ui.Element], *search_specs: Spec
 ):
     queue = LifoQueue()
-    for element in reversed(root_elements):
+    for element in root_elements:
         queue.put((element, search_specs))
 
     while not queue.empty():
