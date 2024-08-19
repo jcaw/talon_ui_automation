@@ -313,6 +313,16 @@ def automator_get_tray_icon(icon_name_regexp: str) -> ui.Element:
 
 @module.action_class
 class Actions:
+    def automator_find_elements(
+        search_specs: List[Spec], root_elements: List[ui.Element] = []
+    ):
+        """Find the first element matching `search_specs`."""
+        with AutomationOverlay():
+            if root_elements:
+                return automator_find_elements_from_roots(*search_specs, root_elements)
+            else:
+                return automator_find_elements(*search_specs)
+
     def automator_click_element(search_specs: List[Spec], button: int = 0):
         """Find and click a specific element."""
         with AutomationOverlay():
