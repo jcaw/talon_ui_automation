@@ -110,7 +110,6 @@ canvases = []
 
 def create_canvases():
     if not canvases:
-        print("Creating canvases")
         for screen in ui.screens():
             c = canvas.Canvas.from_screen(screen)
             # HOTFIX: from_screen not working right on Windows
