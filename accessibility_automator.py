@@ -1,5 +1,6 @@
 from typing import Union, List, Optional, Iterator
 import re
+import threading
 from queue import LifoQueue
 from talon import Module, Context, actions, ui, cron, app, canvas
 from talon.ui import Rect, Point2d
@@ -66,6 +67,11 @@ def automator_predefined_specs() -> SearchSpecs:
     return SearchSpecs
 
 
+overlay_text_queue = LifoQueue()
+overlay_text_lock = threading.Lock()
+DEFAULT_OVERLAY_TEXT = "Automating UI"
+
+
 def draw(c: canvas.Canvas):
     TRANSPARENCY = "77"
 
@@ -75,10 +81,21 @@ def draw(c: canvas.Canvas):
     paint.style = paint.Style.FILL
     c.draw_rect(c.rect)
 
-    paint.textsize = round(min(c.rect.width, c.rect.height) / 8)
     paint.color = "#FFFFFF" + TRANSPARENCY
-    text = "(Automating UI)"
+    with overlay_text_lock:
+        text = (
+            DEFAULT_OVERLAY_TEXT
+            if overlay_text_queue.empty()
+            else overlay_text_queue.queue[-1]
+        )
+        # Also wrap in braces
+        text = f"({text})"
+    paint.textsize = round(min(c.rect.width, c.rect.height) / 8)
+    # HACK: Ensure text fits in screen bounds
     text_dims = paint.measure_text(text)[1]
+    while text_dims.width > c.rect.width * 0.95 and paint.textsize > 1:
+        paint.textsize -= 1
+        text_dims = paint.measure_text(text)[1]
     c.draw_text(
         text,
         c.rect.center.x - text_dims.width / 2,
@@ -114,84 +131,107 @@ def destroy_canvases():
     canvases.clear()
 
 
+def redraw_canvases():
+    for c in canvases:
+        c.resume()
+        c.freeze()
+
+
 canvas_context_count = 0
 
 
 # TODO: Convert this to an action to remove need to import?
 class AutomationOverlay:
+    def __init__(self, text_override: Optional[str] = None):
+        self.text_override = text_override
+
     def __enter__(self):
         global canvas_context_count
+        if isinstance(self.text_override, str):
+            with overlay_text_lock:
+                overlay_text_queue.put(self.text_override)
         # Count multiple entries into this context so the canvases are only
         # destroyed when exiting the outermost context.
         if canvas_context_count == 0:
             create_canvases()
+        else:
+            redraw_canvases
         canvas_context_count += 1
         return self
 
     def __exit__(self, *_, **__):
         global canvas_context_count
+        if isinstance(self.text_override, str):
+            with overlay_text_lock:
+                overlay_text_queue.get()
         canvas_context_count -= 1
         if canvas_context_count == 0:
             destroy_canvases()
+        else:
+            redraw_canvases()
         return False
 
 
 @module.action
-def automator_overlay() -> AutomationOverlay:
+def automator_overlay(text_override: Optional[str] = None) -> AutomationOverlay:
     """Get a context manager that creates an automation overlay."""
-    return AutomationOverlay()
+    return AutomationOverlay(text_override)
+
+
+FINDING_ELEMENT_TEXT = "Searching UI Tree"
 
 
 def automator_find_elements_from_roots(
     root_elements: List[ui.Element], *search_specs: Spec
 ):
-    queue = LifoQueue()
-    for element in root_elements:
-        queue.put((element, search_specs))
+    with AutomationOverlay(FINDING_ELEMENT_TEXT):
+        queue = LifoQueue()
+        for element in root_elements:
+            queue.put((element, search_specs))
 
-    while not queue.empty():
-        element, remaining_specs = queue.get()
-        if not remaining_specs:
-            continue
-        spec = remaining_specs[0]
-        name_matches = spec.name is None or re.search(spec.name, element.name)
-        class_matches = spec.class_name is None or re.search(
-            spec.class_name, element.class_name
-        )
-        if name_matches and class_matches:
-            if len(remaining_specs) == 1:
-                yield element
-            else:
+        while not queue.empty():
+            element, remaining_specs = queue.get()
+            if not remaining_specs:
+                continue
+            spec = remaining_specs[0]
+            name_matches = spec.name is None or re.search(spec.name, element.name)
+            class_matches = spec.class_name is None or re.search(
+                spec.class_name, element.class_name
+            )
+            if name_matches and class_matches:
+                if len(remaining_specs) == 1:
+                    yield element
+                else:
+                    for child in element.children:
+                        queue.put((child, remaining_specs[1:]))
+            elif spec.search_indirect:
+                # We want to search all intermediate nodes if search_indirect is set
+                # - any unmatching node counts as a potential intermediate.
                 for child in element.children:
-                    queue.put((child, remaining_specs[1:]))
-        elif spec.search_indirect:
-            # We want to search all intermediate nodes if search_indirect is set
-            # - any unmatching node counts as a potential intermediate.
-            for child in element.children:
-                queue.put((child, remaining_specs))
+                    queue.put((child, remaining_specs))
 
 
 def automator_find_elements(*search_specs: Spec) -> Iterator[ui.Element]:
     """Iterator to yeild all elements matching a particular search spec."""
-    # TODO: Edge case for if the first spec matches the root node?
-
-    windows = []
-    browser_windows = []
-    for window in ui.windows():
-        if window.hidden or window.minimized:
-            continue
-        try:
-            element = window.element
-        except OSError:
-            continue
-        for browser in {"firefox", "chrome", "edge", "safari", "brave"}:
-            if browser in element.name.lower():
-                browser_windows.append(element)
+    with AutomationOverlay(FINDING_ELEMENT_TEXT):
+        # TODO: Edge case for if the first spec matches the root node?
+        windows = []
+        browser_windows = []
+        for window in ui.windows():
+            if window.hidden or window.minimized:
                 continue
-        windows.append(element)
-    # Browsers can take a long time to scrape, so put them at the end.
-    windows.extend(browser_windows)
-    return automator_find_elements_from_roots(reversed(windows), *search_specs)
+            try:
+                element = window.element
+            except OSError:
+                continue
+            for browser in {"firefox", "chrome", "edge", "safari", "brave"}:
+                if browser in element.name.lower():
+                    browser_windows.append(element)
+                    continue
+            windows.append(element)
+        # Browsers can take a long time to scrape, so put them at the end.
+        windows.extend(browser_windows)
+        return automator_find_elements_from_roots(reversed(windows), *search_specs)
 
 
 def automator_find_elements_current_window(*search_specs: Spec) -> Iterator[ui.Element]:
