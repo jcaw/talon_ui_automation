@@ -382,7 +382,7 @@ def automator_get_tray_icon_windows(icon_name_regexp: str) -> ui.Element:
 
     # Open the start menu to ensure the tray is showing on Windows 11
     key("win")
-    sleep("300ms")
+    sleep("500ms")
 
     button_spec = system_tray_button_spec(icon_name_regexp)
 
