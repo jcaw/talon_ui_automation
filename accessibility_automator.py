@@ -455,6 +455,8 @@ class WindowsActions:
             # TODO: Switch to it if it's already open?
             click_talon_menu_item_windows("Scripting", "View Log")
 
+            # TODO: Place in a specific position on the screen? e.g. on the second screen, if two screens open
+
     def automator_check_for_talon_updates():
         with AutomationOverlay():
             click_talon_menu_item_windows("Check for Updates...")
