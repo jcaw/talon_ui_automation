@@ -22,10 +22,12 @@ class Spec:
         name: Optional[str] = None,
         class_name: Optional[str] = None,
         search_indirect: bool = False,
+        case_sensitive: bool = False,
     ):
         self.name = name
         self.class_name = class_name
         self.search_indirect = search_indirect
+        self.case_sensitive = case_sensitive
 
 
 @module.action
@@ -33,9 +35,15 @@ def automator_spec(
     name: Optional[str] = None,
     class_name: Optional[str] = None,
     search_indirect: Optional[bool] = False,
+    case_sensitive: Optional[bool] = False,
 ) -> Spec:
     """Create and return an automation element `Spec` object."""
-    return Spec(name=name, class_name=class_name, search_indirect=search_indirect)
+    return Spec(
+        name=name,
+        class_name=class_name,
+        search_indirect=search_indirect,
+        case_sensitive=case_sensitive,
+    )
 
 
 def system_tray_button_spec(name_regexp: str) -> Spec:
@@ -193,7 +201,11 @@ def automator_find_elements_from_roots(
             if not remaining_specs:
                 continue
             spec = remaining_specs[0]
-            name_matches = spec.name is None or re.search(spec.name, element.name)
+            name_matches = spec.name is None or re.search(
+                spec.name,
+                element.name,
+                re.NONE if spec.case_sensitive else re.IGNORECASE,
+            )
             class_matches = spec.class_name is None or re.search(
                 spec.class_name, element.class_name
             )
