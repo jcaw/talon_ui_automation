@@ -252,11 +252,18 @@ def automator_find_elements_current_window(*search_specs: Spec) -> Iterator[ui.E
 
 
 class ElementNotFoundError(RuntimeError):
-    pass
+    def __init__(self, spec=None):
+        if spec:
+            message = (
+                f'Element not found. Name: "{spec.name}" Class: "{spec.class_name}".'
+            )
+        else:
+            message = "Element not found."
+        super().__init__(message)
 
 
 def _automator_find_first_element_internal(
-    elements_iterator: Iterator[Spec],
+    elements_iterator: Iterator[ui.Element],
 ) -> ui.Element:
     """Common functionality. See references."""
     try:
@@ -319,20 +326,29 @@ def automator_get_tray_icon(icon_name_regexp: str) -> ui.Element:
         click_element(hidden_items_button)
         sleep("200ms")
         key("win")
-        raise ElementNotFoundError()
+        raise
 
 
 @module.action_class
 class Actions:
     def automator_find_elements(
         search_specs: List[Spec], root_elements: List[ui.Element] = []
-    ):
-        """Find the first element matching `search_specs`."""
+    ) -> Iterator[ui.Element]:
+        """Iterator of elements matching `search_specs`."""
         with AutomationOverlay():
             if root_elements:
-                return automator_find_elements_from_roots(*search_specs, root_elements)
+                return automator_find_elements_from_roots(root_elements, *search_specs)
             else:
                 return automator_find_elements(*search_specs)
+
+    def automator_find_first_element(
+        search_specs: List[Spec], root_elements: List[ui.Element] = []
+    ) -> ui.Element:
+        """Find the first element matching `search_specs`."""
+        with AutomationOverlay():
+            return _automator_find_first_element_internal(
+                actions.self.automator_find_elements(search_specs, root_elements)
+            )
 
     def automator_click_element(search_specs: List[Spec], button: int = 0):
         """Find and click a specific element."""
@@ -348,6 +364,11 @@ class Actions:
             click_element(
                 automator_find_first_element_current_window(search_specs), button=button
             )
+
+    def automator_click_found_element(element: ui.Element, button: int = 0):
+        """Click a found and provided element."""
+        with AutomationOverlay():
+            click_element(element, button=button)
 
     def automator_open_talon_repl():
         """Open the Talon repl from the menu (or switch to it if it's already open)."""
@@ -424,7 +445,7 @@ def automator_get_tray_icon_windows(icon_name_regexp: str) -> ui.Element:
         click_element(hidden_items_button)
         sleep("200ms")
         key("win")
-        raise ElementNotFoundError()
+        raise
 
 
 def click_talon_menu_item_windows(*exact_menu_sequence: str):
