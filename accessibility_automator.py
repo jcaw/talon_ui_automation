@@ -34,8 +34,8 @@ class Spec:
 def automator_spec(
     name: Optional[str] = None,
     class_name: Optional[str] = None,
-    search_indirect: Optional[bool] = False,
-    case_sensitive: Optional[bool] = False,
+    search_indirect: bool = False,
+    case_sensitive: bool = False,
 ) -> Spec:
     """Create and return an automation element `Spec` object."""
     return Spec(
