@@ -72,24 +72,18 @@ class SearchSpecs:
 @module.action
 def automator_predefined_specs() -> SearchSpecs:
     """Get the predefined search specs object."""
+    # FIXME: This should be defined somehow
     return SearchSpecs
 
 
 overlay_text_queue = LifoQueue()
+block_input_stack = 0
+visible_stack = 0
 overlay_text_lock = threading.Lock()
 DEFAULT_OVERLAY_TEXT = "Automating UI"
 
 
 def draw(c: canvas.Canvas):
-    TRANSPARENCY = "77"
-
-    paint = c.paint
-    paint.blendmode = paint.Blend.SRC
-    paint.color = "#000000" + TRANSPARENCY
-    paint.style = paint.Style.FILL
-    c.draw_rect(c.rect)
-
-    paint.color = "#FFFFFF" + TRANSPARENCY
     with overlay_text_lock:
         text = (
             DEFAULT_OVERLAY_TEXT
@@ -98,19 +92,31 @@ def draw(c: canvas.Canvas):
         )
         # Also wrap in braces
         text = f"({text})"
-    paint.textsize = round(min(c.rect.width, c.rect.height) / 8)
-    # HACK: Ensure text fits in screen bounds
-    text_dims = paint.measure_text(text)[1]
-    while text_dims.width > c.rect.width * 0.95 and paint.textsize > 1:
-        paint.textsize -= 1
+        visible = visible_stack > 0
+
+    if visible:
+        TRANSPARENCY = "77"
+
+        paint = c.paint
+        paint.blendmode = paint.Blend.SRC
+        paint.color = "#000000" + TRANSPARENCY
+        paint.style = paint.Style.FILL
+        c.draw_rect(c.rect)
+
+        paint.color = "#FFFFFF" + TRANSPARENCY
+        paint.textsize = round(min(c.rect.width, c.rect.height) / 8)
+        # HACK: Ensure text fits in screen bounds
         text_dims = paint.measure_text(text)[1]
-    c.draw_text(
-        text,
-        c.rect.center.x - text_dims.width / 2,
-        # HACK: Compensate for the fact the text's y is measured from
-        #  the line base, not the tails of the text.
-        c.rect.center.y + text_dims.height / 3,
-    )
+        while text_dims.width > c.rect.width * 0.95 and paint.textsize > 1:
+            paint.textsize -= 1
+            text_dims = paint.measure_text(text)[1]
+        c.draw_text(
+            text,
+            c.rect.center.x - text_dims.width / 2,
+            # HACK: Compensate for the fact the text's y is measured from
+            #  the line base, not the tails of the text.
+            c.rect.center.y + text_dims.height / 3,
+        )
 
 
 canvases = []
@@ -144,45 +150,87 @@ def redraw_canvases():
         c.freeze()
 
 
+def set_canvas_eat_input(should_eat: bool):
+    for c in canvases:
+        # TODO 1: Actually block input here.
+        print(dir(c))
+
+
 canvas_context_count = 0
 
 
 # TODO: Convert this to an action to remove need to import?
 class AutomationOverlay:
-    def __init__(self, text_override: Optional[str] = None):
+    def __init__(
+        self,
+        text_override: Optional[str] = None,
+        block_input: bool = False,
+        invisible: bool = False,
+    ):
         self.text_override = text_override
+        self.block_input = block_input
+        self.invisible = invisible
 
     def __enter__(self):
-        global canvas_context_count
-        if isinstance(self.text_override, str):
+        global canvas_context_count, block_input_stack, visible_stack
+
+        if not self.invisible and isinstance(self.text_override, str):
             with overlay_text_lock:
                 overlay_text_queue.put(self.text_override)
+
         # Count multiple entries into this context so the canvases are only
         # destroyed when exiting the outermost context.
         if canvas_context_count == 0:
             create_canvases()
         else:
-            redraw_canvases
+            redraw_canvases()
         canvas_context_count += 1
+
+        if not self.invisible:
+            visible_stack += 1
+
+        if self.block_input:
+            if block_input_stack <= 0:
+                set_canvas_eat_input(True)
+            block_input_stack += 1
+
         return self
 
     def __exit__(self, *_, **__):
-        global canvas_context_count
+        global canvas_context_count, block_input_stack, visible_stack
+
         if isinstance(self.text_override, str):
             with overlay_text_lock:
                 overlay_text_queue.get()
+
+        if self.block_input:
+            block_input_stack -= 1
+
+        if not self.invisible:
+            visible_stack -= 1
+
         canvas_context_count -= 1
         if canvas_context_count == 0:
             destroy_canvases()
         else:
             redraw_canvases()
+
+            if self.block_input and block_input_stack <= 0:
+                set_canvas_eat_input(False)
+
         return False
 
 
 @module.action
-def automator_overlay(text_override: Optional[str] = None) -> AutomationOverlay:
+def automator_overlay(
+    text_override: Optional[str] = None,
+    block_input: bool = False,
+    invisible: bool = False,
+) -> AutomationOverlay:
     """Get a context manager that creates an automation overlay."""
-    return AutomationOverlay(text_override)
+    return AutomationOverlay(
+        text_override=text_override, block_input=block_input, invisible=invisible
+    )
 
 
 FINDING_ELEMENT_TEXT = "Searching UI Tree"
@@ -408,13 +456,17 @@ def exact_match_re(string: str) -> str:
     return f"^{re.escape(string)}$"
 
 
-def automator_get_tray_icon_windows(icon_name_regexp: str) -> ui.Element:
+def automator_open_start_menu():
     # Reset so we have a predictable starting state
     actions.self.automator_close_start_menu()
 
     # Open the start menu to ensure the tray is showing on Windows 11
     key("win")
     sleep("500ms")
+
+
+def automator_get_tray_icon_windows(icon_name_regexp: str) -> ui.Element:
+    automator_open_start_menu()
 
     button_spec = system_tray_button_spec(icon_name_regexp)
 
